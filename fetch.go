@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -69,27 +70,30 @@ func main() {
 }
 
 func UploadToS3(data interface{}) error {
-    fmt.Println("Starting S3 upload process...")
+    // Start logging
+    log.Println("Starting S3 upload process...")
     
     // Initialize AWS session
-    fmt.Println("Initializing AWS session...")
+    log.Println("Initializing AWS session...")
     sess, err := session.NewSession(&aws.Config{
         Region: aws.String(os.Getenv("AWS_REGION")),
     })
     if err != nil {
-        fmt.Printf("❌ AWS session creation failed: %v\n", err)
+        log.Printf("❌ AWS session creation failed: %v\n", err)
         return fmt.Errorf("failed to create AWS session: %v", err)
     }
-    fmt.Println("✅ AWS session initialized successfully")
+    log.Println("✅ AWS session initialized successfully")
 
     // Create S3 client
-    fmt.Println("Creating S3 client...")
+    log.Println("Creating S3 client...")
     svc := s3.New(sess)
     bucketName := os.Getenv("S3_BUCKET_NAME")
-    fmt.Printf("Using bucket: %s\n", bucketName)
+    // Use the INPUT_KEY directly from environment variable
+    s3Key := os.Getenv("INPUT_KEY") // This should be "highlights/basketball_highlights.json"
+    log.Printf("Using bucket: %s with key: %s\n", bucketName, s3Key)
 
     // Check if bucket exists
-    fmt.Printf("Checking if bucket '%s' exists...\n", bucketName)
+    log.Printf("Checking if bucket '%s' exists...\n", bucketName)
     _, err = svc.HeadBucket(&s3.HeadBucketInput{
         Bucket: aws.String(bucketName),
     })
@@ -97,54 +101,48 @@ func UploadToS3(data interface{}) error {
         if aerr, ok := err.(awserr.Error); ok {
             switch aerr.Code() {
             case "NotFound", "NoSuchBucket":
-                fmt.Printf("Bucket '%s' not found, creating new bucket...\n", bucketName)
-                // Create bucket if it doesn't exist
+                log.Printf("Bucket '%s' not found, creating new bucket...\n", bucketName)
                 _, err = svc.CreateBucket(&s3.CreateBucketInput{
                     Bucket: aws.String(bucketName),
                 })
                 if err != nil {
-                    fmt.Printf("❌ Failed to create bucket: %v\n", err)
+                    log.Printf("❌ Failed to create bucket: %v\n", err)
                     return fmt.Errorf("failed to create bucket: %v", err)
                 }
-                fmt.Printf("✅ Created new S3 bucket: %s\n", bucketName)
+                log.Printf("✅ Created new S3 bucket: %s\n", bucketName)
             default:
-                fmt.Printf("❌ Error checking bucket: %v\n", err)
+                log.Printf("❌ Error checking bucket: %v\n", err)
                 return fmt.Errorf("error checking bucket: %v", err)
             }
         }
     } else {
-        fmt.Printf("✅ Bucket '%s' exists\n", bucketName)
+        log.Printf("✅ Bucket '%s' exists\n", bucketName)
     }
 
     // Convert data to JSON
-    fmt.Println("Converting data to JSON format...")
+    log.Println("Converting data to JSON format...")
     jsonData, err := json.MarshalIndent(data, "", "    ")
     if err != nil {
-        fmt.Printf("❌ JSON marshaling failed: %v\n", err)
+        log.Printf("❌ JSON marshaling failed: %v\n", err)
         return fmt.Errorf("failed to marshal JSON: %v", err)
     }
-    fmt.Printf("✅ Data converted to JSON (size: %d bytes)\n", len(jsonData))
-
-    // Generate key with timestamp
-    timestamp := time.Now().Format("2006-01-02-15-04-05")
-    key := fmt.Sprintf("highlights/%s/data.json", timestamp)
-    fmt.Printf("Generated S3 key: %s\n", key)
+    log.Printf("✅ Data converted to JSON (size: %d bytes)\n", len(jsonData))
 
     // Upload to S3
-    fmt.Println("Uploading data to S3...")
+    log.Printf("Uploading data to S3 with key: %s...\n", s3Key)
     startTime := time.Now()
     _, err = svc.PutObject(&s3.PutObjectInput{
         Bucket:      aws.String(bucketName),
-        Key:         aws.String(key),
+        Key:         aws.String(s3Key),
         Body:        bytes.NewReader(jsonData),
         ContentType: aws.String("application/json"),
     })
     if err != nil {
-        fmt.Printf("❌ Upload failed: %v\n", err)
+        log.Printf("❌ Upload failed: %v\n", err)
         return fmt.Errorf("failed to upload to S3: %v", err)
     }
     
     duration := time.Since(startTime)
-    fmt.Printf("✅ Successfully uploaded data to s3://%s/%s (took %v)\n", bucketName, key, duration)
+    log.Printf("✅ Successfully uploaded data to s3://%s/%s (took %v)\n", bucketName, s3Key, duration)
     return nil
 }
