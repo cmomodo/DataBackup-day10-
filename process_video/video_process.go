@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net/http"
 	"os"
+	"os/exec"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -42,7 +42,7 @@ func ProcessVideos() error {
     // Initialize AWS session and S3 client using AWS_REGION from .env
     region := os.Getenv("AWS_REGION")
     bucketName := os.Getenv("S3_BUCKET_NAME")
-    inputKey := os.Getenv("INPUT_KEY") // JSON file key
+    inputKey := os.Getenv("INPUT_KEY")   // JSON file key
     outputKey := os.Getenv("OUTPUT_KEY") // Output key prefix for video files
 
     log.Printf("Initializing AWS session for region %s...", region)
@@ -92,30 +92,29 @@ func ProcessVideos() error {
         }
         log.Printf("Processing record %d with video URL: %s", index, record.URL)
 
-        // Download the video using HTTP GET.
-        resp, err := http.Get(record.URL)
-        if err != nil {
-            log.Printf("❌ Failed to download video from URL '%s': %v", record.URL, err)
-            continue
-        }
-        if resp.StatusCode != http.StatusOK {
-            log.Printf("❌ Non-200 response when downloading video URL '%s': status %d", record.URL, resp.StatusCode)
-            resp.Body.Close()
-            continue
-        }
-        // Store the video data in a bytes Buffer.
-        var videoBuffer bytes.Buffer
-        _, err = io.Copy(&videoBuffer, resp.Body)
-        resp.Body.Close()
-        if err != nil {
-            log.Printf("❌ Error reading video response for URL '%s': %v", record.URL, err)
-            continue
-        }
-        log.Printf("✅ Successfully downloaded video from URL '%s' (size: %d bytes).", record.URL, videoBuffer.Len())
-
         // Generate a unique S3 key for the video using the OUTPUT_KEY prefix.
         videoKey := fmt.Sprintf("%s/highlight_%d.mp4", outputKey, index)
-        log.Printf("Uploading video to S3 with key: %s", videoKey)
+        log.Printf("Generated S3 key: %s", videoKey)
+
+        // Download the video using yt-dlp
+        cmd := exec.Command("yt-dlp",
+            "-f", "best[height<=360]", // Select the best quality under or equal to 144p
+            "-o", "-", // Output to stdout
+            record.URL)
+
+        log.Printf("Executing yt-dlp command: %s", cmd.String())
+
+        var videoBuffer bytes.Buffer
+        cmd.Stdout = &videoBuffer
+        cmd.Stderr = os.Stderr // Redirect stderr to the console
+
+        err = cmd.Run()
+        if err != nil {
+            log.Printf("❌ yt-dlp download failed for URL '%s': %v", record.URL, err)
+            continue
+        }
+
+        log.Printf("✅ Successfully downloaded video using yt-dlp (size: %d bytes).", videoBuffer.Len())
 
         // Upload the video back to the S3 bucket
         _, err = s3Client.PutObject(&s3.PutObjectInput{
