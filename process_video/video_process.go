@@ -1,0 +1,144 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"os"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/joho/godotenv"
+)
+
+// VideoRecord represents a single video record within the JSON file.
+type VideoRecord struct {
+    URL string `json:"url"`
+    // other fields can be added if needed
+}
+
+// JSONData represents the structure of the JSON file stored in S3.
+type JSONData struct {
+    Data []VideoRecord `json:"data"`
+}
+
+func init() {
+    // Load .env file
+    err := godotenv.Load(".env")
+    if err != nil {
+        log.Fatalf("Error loading .env file: %v", err)
+    }
+}
+
+// ProcessVideos retrieves the JSON from the S3 bucket, downloads video files from the URLs,
+// and uploads each video back to S3 under a generated key.
+func ProcessVideos() error {
+    log.Println("Starting video processing...")
+
+    // Initialize AWS session and S3 client using AWS_REGION from .env
+    region := os.Getenv("AWS_REGION")
+    bucketName := os.Getenv("S3_BUCKET_NAME")
+    inputKey := os.Getenv("INPUT_KEY") // JSON file key
+    outputKey := os.Getenv("OUTPUT_KEY") // Output key prefix for video files
+
+    log.Printf("Initializing AWS session for region %s...", region)
+    sess, err := session.NewSession(&aws.Config{
+        Region: aws.String(region),
+    })
+    if err != nil {
+        log.Printf("❌ AWS session creation failed: %v", err)
+        return fmt.Errorf("failed to create AWS session: %v", err)
+    }
+    s3Client := s3.New(sess)
+    log.Println("✅ AWS session and S3 client initialized.")
+
+    // Retrieve the JSON file from S3
+    log.Printf("Retrieving JSON file from S3: bucket=%s, key=%s...", bucketName, inputKey)
+    objOut, err := s3Client.GetObject(&s3.GetObjectInput{
+        Bucket: aws.String(bucketName),
+        Key:    aws.String(inputKey),
+    })
+    if err != nil {
+        log.Printf("❌ Failed to retrieve JSON file from S3: %v", err)
+        return fmt.Errorf("failed to retrieve JSON: %v", err)
+    }
+    defer objOut.Body.Close()
+
+    jsonBytes, err := io.ReadAll(objOut.Body)
+    if err != nil {
+        log.Printf("❌ Error reading JSON object body: %v", err)
+        return fmt.Errorf("failed to read JSON body: %v", err)
+    }
+    log.Printf("✅ Successfully retrieved JSON file from S3 (size: %d bytes).", len(jsonBytes))
+
+    // Parse the JSON content and extract video URLs from the data field.
+    var jsonData JSONData
+    if err := json.Unmarshal(jsonBytes, &jsonData); err != nil {
+        log.Printf("❌ Error parsing JSON: %v", err)
+        return fmt.Errorf("failed to unmarshal JSON: %v", err)
+    }
+    log.Printf("✅ Parsed JSON content and found %d video records.", len(jsonData.Data))
+
+    // Loop through each video record and process it.
+    for index, record := range jsonData.Data {
+        // Check if a valid video URL is present.
+        if record.URL == "" {
+            log.Printf("Warning: skipped record %d due to missing video URL.", index)
+            continue
+        }
+        log.Printf("Processing record %d with video URL: %s", index, record.URL)
+
+        // Download the video using HTTP GET.
+        resp, err := http.Get(record.URL)
+        if err != nil {
+            log.Printf("❌ Failed to download video from URL '%s': %v", record.URL, err)
+            continue
+        }
+        if resp.StatusCode != http.StatusOK {
+            log.Printf("❌ Non-200 response when downloading video URL '%s': status %d", record.URL, resp.StatusCode)
+            resp.Body.Close()
+            continue
+        }
+        // Store the video data in a bytes Buffer.
+        var videoBuffer bytes.Buffer
+        _, err = io.Copy(&videoBuffer, resp.Body)
+        resp.Body.Close()
+        if err != nil {
+            log.Printf("❌ Error reading video response for URL '%s': %v", record.URL, err)
+            continue
+        }
+        log.Printf("✅ Successfully downloaded video from URL '%s' (size: %d bytes).", record.URL, videoBuffer.Len())
+
+        // Generate a unique S3 key for the video using the OUTPUT_KEY prefix.
+        videoKey := fmt.Sprintf("%s/highlight_%d.mp4", outputKey, index)
+        log.Printf("Uploading video to S3 with key: %s", videoKey)
+
+        // Upload the video back to the S3 bucket
+        _, err = s3Client.PutObject(&s3.PutObjectInput{
+            Bucket:      aws.String(bucketName),
+            Key:         aws.String(videoKey),
+            Body:        bytes.NewReader(videoBuffer.Bytes()),
+            ContentType: aws.String("video/mp4"),
+        })
+        if err != nil {
+            log.Printf("❌ Failed to upload video '%s' to S3: %v", videoKey, err)
+            continue
+        }
+        log.Printf("✅ Successfully uploaded video '%s' to S3.", videoKey)
+    }
+
+    log.Println("Completed processing all video records.")
+    return nil
+}
+
+func main() {
+    log.Println("===== Video Process Start =====")
+    if err := ProcessVideos(); err != nil {
+        log.Fatalf("Error processing videos: %v", err)
+    }
+    log.Println("===== Video Process Completed =====")
+}
