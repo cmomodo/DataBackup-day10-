@@ -27,15 +27,17 @@ type JSONData struct {
 }
 
 func init() {
+    log.Println("Initializing application...")
     // Load .env file
     err := godotenv.Load(".env")
     if err != nil {
         log.Fatalf("Error loading .env file: %v", err)
     }
+    log.Println("Successfully loaded .env file.")
 }
 
 // ProcessVideos retrieves the JSON from the S3 bucket, downloads video files from the URLs,
-// and uploads each video back to S3 under a generated key.
+// and uploads each video back to S3 under a single key.
 func ProcessVideos() error {
     log.Println("Starting video processing...")
 
@@ -43,7 +45,7 @@ func ProcessVideos() error {
     region := os.Getenv("AWS_REGION")
     bucketName := os.Getenv("S3_BUCKET_NAME")
     inputKey := os.Getenv("INPUT_KEY")   // JSON file key
-    outputKey := os.Getenv("OUTPUT_KEY") // Output key prefix for video files
+    outputKey := os.Getenv("OUTPUT_KEY") // Output key for video file
 
     log.Printf("Initializing AWS session for region %s...", region)
     sess, err := session.NewSession(&aws.Config{
@@ -92,13 +94,9 @@ func ProcessVideos() error {
         }
         log.Printf("Processing record %d with video URL: %s", index, record.URL)
 
-        // Generate a unique S3 key for the video using the OUTPUT_KEY prefix.
-        videoKey := fmt.Sprintf("%s/highlight_%d.mp4", outputKey, index)
-        log.Printf("Generated S3 key: %s", videoKey)
-
         // Download the video using yt-dlp
         cmd := exec.Command("yt-dlp",
-            "-f", "best[height<=360]", // Select the best quality under or equal to 144p
+            "-f", "best[height<=360]", // Select the best quality under or equal to 360p
             "-o", "-", // Output to stdout
             record.URL)
 
@@ -119,15 +117,15 @@ func ProcessVideos() error {
         // Upload the video back to the S3 bucket
         _, err = s3Client.PutObject(&s3.PutObjectInput{
             Bucket:      aws.String(bucketName),
-            Key:         aws.String(videoKey),
+            Key:         aws.String(outputKey),
             Body:        bytes.NewReader(videoBuffer.Bytes()),
             ContentType: aws.String("video/mp4"),
         })
         if err != nil {
-            log.Printf("❌ Failed to upload video '%s' to S3: %v", videoKey, err)
+            log.Printf("❌ Failed to upload video '%s' to S3: %v", outputKey, err)
             continue
         }
-        log.Printf("✅ Successfully uploaded video '%s' to S3.", videoKey)
+        log.Printf("✅ Successfully uploaded video '%s' to S3.", outputKey)
     }
 
     log.Println("Completed processing all video records.")
