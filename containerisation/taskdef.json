@@ -1,0 +1,50 @@
+{
+  "family": "sports-backup-task",
+  "networkMode": "awsvpc",
+  "executionRoleArn": "arn:aws:iam::449095351082:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::449095351082:role/ecsTaskExecutionRole",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "containerDefinitions": [
+    {
+      "name": "sports-backup-container",
+      "image": "449095351082.dkr.ecr.us-east-1.amazonaws.com/sports-backup:latest",
+      "essential": true,
+      "environment": [
+        { "name": "API_URL", "value": "https://sport-highlights-api.p.rapidapi.com/handball/highlights?timezone=Etc%2FUTC&limit=40&date=2023-12-27&countryName=Germany&offset=0&season=2023&homeTeamName=Bensheim-Auerbach%20W&homeTeamId=302038&matchId=127621850&leagueName=1.%20Bundesliga%20Women&awayTeamId=332674&awayTeamName=Solingen%20W&countryCode=DE&leagueId=36526" },
+        { "name": "RAPIDAPI_HOST", "value": "sport-highlights-api.p.rapidapi.com" },
+        { "name": "RAPIDAPI_KEY", "value": "2111b15adcmsh11ffa193ecdd7b8p10ece2jsn0b1449c39037" },
+        { "name": "LEAGUE_NAME", "value": "NCAA" },
+        { "name": "LIMIT", "value": "" },
+        { "name": "S3_BUCKET_NAME", "value": "json-store-acm" },
+        { "name": "AWS_REGION", "value": "us-east-1" },
+        { "name": "DYNAMODB_TABLE", "value": "SportsHighlights" },
+        {
+          "name": "MEDIACONVERT_ENDPOINT",
+          "value": "https://lxlxpswfb.mediaconvert.us-east-1.amazonaws.com"
+        },
+        {
+          "name": "MEDIACONVERT_ROLE_ARN",
+          "value": "arn:aws:iam::449095351082:role/MediaConvertRole"
+        },
+        { "name": "INPUT_KEY", "value": "highlights/basketball_highlights.json" },
+        { "name": "OUTPUT_KEY_PREFIX", "value": "" },
+        { "name": "RETRY_COUNT", "value": "3" },
+        { "name": "RETRY_DELAY", "value": "30" },
+        {
+          "name": "WAIT_TIME_BETWEEN_SCRIPTS",
+          "value": "60"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
