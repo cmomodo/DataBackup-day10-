@@ -3,9 +3,11 @@
 #Introduction
 This is a Sports Data Backup project for NBA Game Day. The project is designed to backup the data from the NBA Game Day API. The data is stored in a database and can be accessed by the user.
 
-#System Design
+# System Design
 
-#setup s3 bucket permisson
+![System Design](/image/sports_lake_backup.png)
+
+# Setup S3 Bucket Permission
 
 ```bash
 aws s3api put-bucket-policy --bucket nba-game-day-data-backup --policy file://s3_policy.json
@@ -69,3 +71,35 @@ envsubst < ecseventsrole-policy.template.json > ecseventsrole-policy.json
 ```
 
 Step 5: Build and Push Docker Image
+
+##### create ecr repository
+
+```bash
+aws ecr create-repository \
+    --repository-name sports-lake-ecr \
+    --region us-east-1
+```
+
+##### login to docker registry
+
+```bash
+$(aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 765095351082.dkr.ecr.us-east-1.amazonaws.com)
+```
+
+#### build image
+
+```bash
+docker build -t sports-lake .
+```
+
+##### tag image with ECR URI
+
+```bash
+docker tag sports-lake:latest 765095351082.dkr.ecr.us-east-1.amazonaws.com/sports-lake-ecr:latest
+```
+
+##### push image to ECR
+
+```bash
+docker push 765095351082.dkr.ecr.us-east-1.amazonaws.com/sports-lake-ecr:latest
+```
