@@ -103,3 +103,34 @@ docker tag sports-lake:latest 765095351082.dkr.ecr.us-east-1.amazonaws.com/sport
 ```bash
 docker push 765095351082.dkr.ecr.us-east-1.amazonaws.com/sports-lake-ecr:latest
 ```
+
+Step 6: Creation Of resources:
+aws loggroup creation:
+
+```aws logs create-log-group --log-group-name /ecs/sports-backup --region us-east-1
+
+```
+
+register task definition:
+
+```bash
+aws ecs register-task-definition --cli-input-json file://taskdef.json
+```
+
+attach s3 and dynamodb policy to role:
+
+```bash
+aws iam attach-role-policy --role-name sports-backup-task-execution-role --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+```
+
+create events role:
+
+```bash
+aws iam create-role --role-name sports-backup-events-role --assume-role-policy-document file://ecseventsrole-trust.json
+```
+
+attach events role policy:
+
+```bash
+aws iam put-role-policy --role-name sports-backup-events-role --policy-name sports-backup-events-policy --policy-document file://ecseventsrole-policy.json
+```
