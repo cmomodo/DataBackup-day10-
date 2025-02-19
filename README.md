@@ -134,3 +134,16 @@ attach events role policy:
 ```bash
 aws iam put-role-policy --role-name sports-backup-events-role --policy-name sports-backup-events-policy --policy-document file://ecseventsrole-policy.json
 ```
+
+STEP 7: Create EventBridge Rule
+
+```bash
+
+aws events put-rule --name sports-backup-rule --schedule-expression 'rate(1 hour)' --region us-east-1
+```
+
+2. Add target to rule
+
+```bash
+aws events put-targets --rule sports-backup-rule --targets file://ecsTarget.json
+```
