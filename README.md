@@ -147,3 +147,26 @@ aws events put-rule --name sports-backup-rule --schedule-expression 'rate(1 hour
 ```bash
 aws events put-targets --rule sports-backup-rule --targets file://ecsTarget.json
 ```
+
+Step 7: Create Event Bridge Rule
+
+```bash
+aws events put-rule --name SportsBackupScheduleRule --schedule-expression "rate(1 day)" --region ${AWS_REGION}
+```
+
+2. Add target to rule
+
+```bash
+aws events put-targets --rule SportsBackupScheduleRule --targets file://ecsTarget.json --region ${AWS_REGION}
+```
+
+Step 8: Test the ecs container
+
+```bash
+aws ecs run-task \
+  --cluster sports-backup-cluster \
+  --launch-type FARGATE \
+  --task-definition ${TASK_FAMILY} \
+  --network-configuration "awsvpcConfiguration={subnets=[\"${SUBNET_ID}\"],securityGroups=[\"${SECURITY_GROUP_ID}\"],assignPublicIp=\"ENABLED\"}" \
+  --region ${AWS_REGION}
+```
